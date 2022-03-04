@@ -17,7 +17,7 @@ def imshow(input):
     plt.imshow(input, cmap = 'gray')
     plt.show()
 
-def plot_acc_loss (loss, val_loss, acc, val_acc):
+def plot_acc_loss (loss, val_loss, acc, val_acc, path):
     """ plot training and validation loss and accuracy """
     plt.figure (figsize = (12, 4))
     plt.subplot (1, 2, 1)
@@ -36,5 +36,9 @@ def plot_acc_loss (loss, val_loss, acc, val_acc):
     plt.title ('Accuracy')
     plt.legend ()
 
+    plt.savefig(path)
+    
     plt.show ()
+    # plt.savefig(path)
+
 

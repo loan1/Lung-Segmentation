@@ -1,4 +1,7 @@
 # https://github.com/qubvel/segmentation_models.pytorch
+# https://github.com/IlliaOvcharenko/lung-segmentation
+# https://www.kaggle.com/pezhmansamadi/lung-segmentation-torch
+
 import segmentation_models_pytorch as smp
 
 import numpy as np
@@ -10,7 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # metrics
-from sklearn.metrics import accuracy_score, jaccard_score
+from sklearn.metrics import accuracy_score, jaccard_score, f1_score, recall_score, precision_score
 from operator import add
 import sys
 
@@ -69,17 +72,18 @@ def calculate_metrics(y_pred, y_true):
 
     """ Prediction """
     y_pred = y_pred.cpu().detach().numpy()
-    y_pred = y_pred > 0.5
-    y_pred = y_pred.astype(np.uint8)
-    y_pred = y_pred.reshape(-1)
+    y_pred = y_pred > 0.5 # True False False True 
+    y_pred = y_pred.astype(np.uint8) # 0 1 1 0
+    y_pred = y_pred.reshape(-1) # flatten
 
-    score_jaccard = jaccard_score(y_true, y_pred)
-#     score_f1 = f1_score(y_true, y_pred)
-#     score_recall = recall_score(y_true, y_pred)
-#     score_precision = precision_score(y_true, y_pred)
-    score_acc = accuracy_score(y_true, y_pred)
+    jaccard = jaccard_score(y_true, y_pred)
+    # f1 = f1_score(y_true, y_pred)
+    # recall = recall_score(y_true, y_pred)
+    # precision = precision_score(y_true, y_pred)
+    acc = accuracy_score(y_true, y_pred)
 
-    return [score_jaccard, score_acc]
+    # return [jaccard, f1, recall, precision, acc]
+    return [jaccard, acc]
 
 
 def save_checkpoint (state, filename):
@@ -88,11 +92,13 @@ def save_checkpoint (state, filename):
     torch.save (state, filename)
 
 
-def train(model, loader, optimizer, loss_fn, metric_fn, device):
+def train(model, loader, optimizer, scheduler, loss_fn, metric_fn, device):
     epoch_loss = 0.0
     metrics_score = [0.0, 0.0, 0.0, 0.0, 0.0]
     steps = len(loader)
+    
     model.train()
+
     for i, (x, y) in enumerate (loader):
         x = x.to(device, dtype=torch.float32)
         y = y.to(device, dtype=torch.float32)
@@ -110,7 +116,9 @@ def train(model, loader, optimizer, loss_fn, metric_fn, device):
         
         sys.stdout.flush()
         sys.stdout.write('\r Step: [%2d/%2d], loss: %.4f - acc: %.4f' % (i, steps, loss.item(), score[1]))
+    scheduler.step()
     sys.stdout.write('\r')
+        # print('Epoch: {} \t Training Loss: {:.6f} \t Validation Loss {:.6f} \n \t ')
 
     epoch_loss = epoch_loss/len(loader)
     
@@ -152,7 +160,7 @@ def epoch_time(start_time, end_time):
     elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
     return elapsed_mins, elapsed_secs
 
-def fit (model, train_dl, valid_dl, optimizer, epochs, loss_fn, metric_fn, checkpoint_path, device):
+def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metric_fn, checkpoint_path, device):
     """ fiting model to dataloaders, saving best weights and showing results """
     losses, val_losses, accs, val_accs = [], [], [], []
     jaccards, val_jaccards = [], []
@@ -162,7 +170,7 @@ def fit (model, train_dl, valid_dl, optimizer, epochs, loss_fn, metric_fn, check
     for epoch in range (epochs):
         ts = time.time()
         
-        loss, jaccard, acc = train(model, train_dl, optimizer, loss_fn, metric_fn, device)
+        loss, jaccard, acc = train(model, train_dl, optimizer, scheduler, loss_fn, metric_fn, device)
         val_loss, val_jaccard, val_acc = evaluate(model, valid_dl, loss_fn, metric_fn, device)
 
         
@@ -180,7 +188,8 @@ def fit (model, train_dl, valid_dl, optimizer, epochs, loss_fn, metric_fn, check
             data_str = f"===> Valid loss improved from {best_val_loss:2.4f} to {val_loss:2.4f}. Saving checkpoint: {checkpoint_path}"
             print(data_str)
             best_val_loss = val_loss
-            torch.save(model.state_dict(), checkpoint_path)
+            # save_checkpoint(model.state_dict(), checkpoint_path)
+            torch.save(model.state_dict(), checkpoint_path) #save checkpoint
 
         epoch_mins, epoch_secs = epoch_time(ts, te)
         
