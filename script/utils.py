@@ -63,6 +63,29 @@ class DiceBCELoss(nn.Module):
         return Dice_BCE
 
 
+class ComboLoss(nn.Module): #Dice + BCE + focal
+    def __init__(self, weight=None, size_average=True):
+        super(ComboLoss, self).__init__()
+
+    def forward(self, inputs, targets, alpha = 0.8, gamma = 2,smooth=1):
+
+        #comment out if your model contains a sigmoid or equivalent activation layer
+        inputs = torch.sigmoid(inputs)
+
+        #flatten label and prediction tensors
+        inputs = inputs.view(-1)
+        targets = targets.view(-1)
+
+        intersection = (inputs * targets).sum()
+        dice_loss = 1 - (2.*intersection + smooth)/(inputs.sum() + targets.sum() + smooth)
+        BCE = F.binary_cross_entropy(inputs, targets, reduction='mean')
+        
+        BCE_EXP = torch.exp(-BCE)
+        focal_loss = alpha*(1-BCE_EXP)**gamma*BCE
+
+        Dice_BCE = BCE + dice_loss +focal_loss
+
+        return Dice_BCE
 def calculate_metrics(y_pred, y_true):
     """ Ground truth """
     y_true = y_true.cpu().numpy()
@@ -100,13 +123,20 @@ def train(model, loader, optimizer, scheduler, loss_fn, metric_fn, device):
     model.train()
 
     for i, (x, y) in enumerate (loader):
-        x = x.to(device, dtype=torch.float32)
-        y = y.to(device, dtype=torch.float32)
+        x = x.to(device)
+        # x = x.float().to(device)
+        y = y.float().unsqueeze(1).to(device)
 
+        # print('x',x)
         optimizer.zero_grad()
-        y_pred = model(x)
-        loss = loss_fn(y_pred, y)
-        loss.backward()
+        y_pred = model(x) # gpu cuda
+
+        # print('y_pred', y_pred)
+        # print(y)
+        # y = torch.unsqueeze(y,1)
+
+        loss = loss_fn(y_pred, y) # comboloss BCE dice focal
+        loss.backward() # ???
         
         score = metric_fn(y_pred, y)
         metrics_score = list(map(add, metrics_score, score))
@@ -135,8 +165,12 @@ def evaluate(model, loader, loss_fn, metric_fn, device):
     model.eval()
     with torch.no_grad():
         for x, y in loader:
-            x = x.to(device, dtype=torch.float32)
-            y = y.to(device, dtype=torch.float32)
+            x = x.to(device)
+            # y = y.to(device, dtype=torch.float32)
+            # x = x.float().to(device)
+            y = y.float().unsqueeze(1).to(device)
+            # print(x)
+            # print(y)
 
             y_pred = model(x)
             loss = loss_fn(y_pred, y)
@@ -165,7 +199,8 @@ def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metri
     losses, val_losses, accs, val_accs = [], [], [], []
     jaccards, val_jaccards = [], []
     best_val_loss = float("inf")
-    
+    patience = 8 
+
     since = time.time()
     for epoch in range (epochs):
         ts = time.time()
@@ -184,19 +219,29 @@ def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metri
         
         te = time.time()
         
-        if val_loss < best_val_loss:
-            data_str = f"===> Valid loss improved from {best_val_loss:2.4f} to {val_loss:2.4f}. Saving checkpoint: {checkpoint_path}"
-            print(data_str)
-            best_val_loss = val_loss
-            # save_checkpoint(model.state_dict(), checkpoint_path)
-            torch.save(model.state_dict(), checkpoint_path) #save checkpoint
+ 
 
         epoch_mins, epoch_secs = epoch_time(ts, te)
         
         print ('Epoch [{}/{}], loss: {:.4f} - jaccard: {:.4f} - acc: {:.4f} - val_loss: {:.4f} - val_jaccard: {:.4f} - val_acc: {:.4f}'.format (epoch + 1, epochs, loss, jaccard, acc, val_loss, val_jaccard, val_acc))
         print(f'Time: {epoch_mins}m {epoch_secs}s')
-        
-    period = time.time() - since
-    print('Training complete in {:.0f}m {:.0f}s'.format(period // 60, period % 60))
+    
+        period = time.time() - since
+        print('Training complete in {:.0f}m {:.0f}s'.format(period // 60, period % 60))
+        if val_loss < best_val_loss:
+            count = 0
+            data_str = f"===> Valid loss improved from {best_val_loss:2.4f} to {val_loss:2.4f}. Saving checkpoint: {checkpoint_path}"
+            print(data_str)
+            best_val_loss = val_loss
+            # save_checkpoint(model.state_dict(), checkpoint_path)
+            torch.save(model.state_dict(), checkpoint_path) #save checkpoint
+        else:
+            count += 1
+            # print('count = ',count)
+            if count >= patience:
+                print('Early stopping!')
+                return dict(loss = losses, val_loss = val_losses, acc = accs, val_acc = val_accs, jaccard = jaccards, val_jaccard = val_jaccards)
+
+
 
     return dict(loss = losses, val_loss = val_losses, acc = accs, val_acc = val_accs, jaccard = jaccards, val_jaccard = val_jaccards)

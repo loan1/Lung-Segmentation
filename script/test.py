@@ -1,7 +1,7 @@
 from utils import UNet_ResNet 
 from dataset import *
 
-import torchvision.transforms as transforms
+import albumentations as A
 import os
 from torch.utils.data import DataLoader
 import torch
@@ -33,15 +33,15 @@ def dataloader():
     #     for i in range(len(mask_list)):
     #         f.write(str(mask_list[i])+ '\n') 
 
-    image_t = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean = [0.5],  std = [0.5])    
+    image_t = A.Compose([
+        A.Resize((224, 224)),
+        A.ToTensor(),
+        A.Normalize(mean = [0.5],  std = [0.5])    
     ])
 
-    mask_t = transforms.Compose([
-        transforms.Resize((224,224)),
-        transforms.ToTensor()
+    mask_t = A.Compose([
+        A.Resize((224,224)),
+        A.ToTensor()
     ])
     test_set = LungDataset(img_mask_list, img_path, mask_path, transform = (image_t, mask_t))
 
@@ -154,20 +154,21 @@ def visualize (y_true, y_pred, classes = 1):
 #     model.load_state_dict(checkpoint)
 
 #     x, y_true, y_pred = test(dataloader()['test'], device, model)
-#     # print(len(dataloader()['test']))
-#     # print(y_true[1].shape)
+      
+#     print(len(dataloader()['test']))
+#     print(y_true[1].shape)
 
-#     # image, mask = next(iter(dataloader()['test']))
+#     image, mask = next(iter(dataloader()['test']))
 
-#     # y_true, y_pred = predict(image, mask, model, device)
-#     # print(y)
-#     # print(len(y_pred))
+#     y_true, y_pred = predict(image, mask, model, device)
+#     print(y)
+#     print(len(y_pred))
 
-# #   y_true =[(4,224,224),...]
+#     y_true =[(4,224,224),...]
 
-#     # print(x.shape)
+#     print(x.shape)
 
-#     # print(y_pred[0][3].shape)
+#     print(y_pred[0][3].shape)
 #     plt.figure (figsize = (15, 20))
 #     for idx in range(4):
 
@@ -189,10 +190,12 @@ def visualize (y_true, y_pred, classes = 1):
 #     # print(accuracy)
 
 def main1():
-    image_tfm = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean = [0.5],  std = [0.5])    
+    image_tfm = A.Compose([
+        A.Resize((224, 224)),
+        A.ToTensor(),
+        A.Normalize(mean = [0.5],  std = [0.5]) 
+        
+
     ])
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -201,19 +204,14 @@ def main1():
     checkpoint = torch.load('../model/UNet.pt')
     model.load_state_dict(checkpoint)
 
-    img = Image.open('../dataset_lungseg/predict/2c68016e-5a63-4430-a834-efe5d43edd0e.png').convert('L')
-    image_tfm(img)
-    x, y_pred = predict(img, device, model)
-    # print(len(dataloader()['test']))
-    # print(y_true[1].shape)
+    img = Image.open('../dataset_lungseg/predict/1dad3414-88c9-4c56-af5d-3a1488af452c.png').convert('L')
+    img = image_tfm(img) 
+    img = img.unsqueeze(0)
+    # print(img.shape)
 
-    # image, mask = next(iter(dataloader()['test']))
+    x, y_pred = predict(img, model, device)
 
-    # y_true, y_pred = predict(image, mask, model, device)
-    # print(y)
-    # print(len(y_pred))
-
-#   y_true =[(4,224,224),...]
+    image, mask = next(iter(dataloader()['test']))
 
     # print(x.shape)
 
@@ -225,7 +223,7 @@ def main1():
     plt.title('Original Image')
 
     plt.subplot (1,2,2)
-    plt.imshow(y_pred, cmap='gray')
+    plt.imshow(y_pred[0], cmap='gray')
     plt.title('Predict Mask')
 
     plt.show()
