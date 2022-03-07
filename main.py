@@ -60,9 +60,12 @@ def dataloader():
     aug = A.Compose([
         A.Resize(224, 224), 
         A.HorizontalFlip(p=0.5),
-        A.ElasticTransform(p=1, alpha=120, sigma=120 * 0.05, alpha_affine=120 * 0.03),
-        A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),
-        A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.5),       
+        A.OneOf([
+            A.RandomGamma(),
+            A.ElasticTransform(alpha=120, sigma=120 * 0.05, alpha_affine=120 * 0.03),
+            A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.9),            
+        ], p = 0.3),
+        A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),         
         A.Normalize(mean = [0.5],  std = [0.5]),
         ToTensorV2()   
     ])
@@ -121,29 +124,29 @@ def main():
     plot_acc_loss (loss, val_loss, acc, val_acc, './visualize/loss_acc')
 
     # test
-    with torch.no_grad():
-        for x, y in dataloader()['val']:
-            x = x.to(device)
-            y = y.to(device)
+    # with torch.no_grad():
+    #     for x, y in dataloader()['val']:
+    #         x = x.to(device)
+    #         y = y.to(device)
 
-            y_pred = model(x)
-            break
+    #         y_pred = model(x)
+    #         break
 
-    pred = y_pred.cpu().numpy()
-    ynum = y.cpu().numpy()
+    # pred = y_pred.cpu().numpy()
+    # ynum = y.cpu().numpy()
 
-    pred = pred.reshape(len(pred), 224, 224)
-    ynum = ynum.reshape(len(ynum), 224, 224)
+    # pred = pred.reshape(len(pred), 224, 224)
+    # ynum = ynum.reshape(len(ynum), 224, 224)
 
-    pred = pred > 0.5
-    pred = np.array(pred, dtype=np.uint8)
+    # pred = pred > 0.5
+    # pred = np.array(pred, dtype=np.uint8)
 
-    ynum = ynum > 0.5
-    ynum = np.array(ynum, dtype=np.uint8)
+    # ynum = ynum > 0.5
+    # ynum = np.array(ynum, dtype=np.uint8)
 
-    plt.imshow(pred[0], cmap='gray')
-    plt.imshow(ynum[0], cmap='gray')
-    plt.show()
+    # plt.imshow(pred[0], cmap='gray')
+    # plt.imshow(ynum[0], cmap='gray')
+    # plt.show()
 
 
 if __name__ == '__main__':
