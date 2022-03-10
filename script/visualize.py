@@ -42,4 +42,13 @@ def plot_acc_loss (loss, val_loss, acc, val_acc, path):
     plt.show ()
     # plt.savefig(path)
 
+def plot_LR(LR, path):
+    plt.plot(range(len(LR)), LR, 'r', label = 'Learning rate')
+    plt.xlabel('Epochs')
+    plt.ylabel('Learning_Rate')
+    plt.title('Learning Rate')
+    plt.legend ()
+    plt.savefig(path)
+    plt.show()
 
+    

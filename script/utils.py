@@ -7,6 +7,7 @@ import segmentation_models_pytorch as smp
 import numpy as np
 import torch
 import time
+# from sklearn.model_selection import KFold
 
 #loss
 import torch.nn as nn
@@ -115,7 +116,18 @@ def save_checkpoint (state, filename):
     torch.save (state, filename)
 
 
+
+def reset_weights(m):
+    '''
+    Try resetting model weights to avoid weight leakage.
+    '''
+    for layer in m.children():
+        if hasattr(layer, 'reset_parameters'):
+            # print(f'Reset trainable parameters of layer = {layer}')
+            layer.reset_parameters()
+
 def train(model, loader, optimizer, scheduler, loss_fn, metric_fn, device):
+    # train(model, train_dl, optimizer, scheduler, loss_fn, metric_fn, device)
     epoch_loss = 0.0
     metrics_score = [0.0, 0.0, 0.0, 0.0, 0.0]
     steps = len(loader)
@@ -142,11 +154,18 @@ def train(model, loader, optimizer, scheduler, loss_fn, metric_fn, device):
         metrics_score = list(map(add, metrics_score, score))
         
         optimizer.step()
+        learning_rate = optimizer.param_groups[0]['lr']
+        
+
         epoch_loss += loss.item()
         
         sys.stdout.flush()
         sys.stdout.write('\r Step: [%2d/%2d], loss: %.4f - acc: %.4f' % (i, steps, loss.item(), score[1]))
     scheduler.step()
+    
+    # last_lr = scheduler.get_last_lr()
+
+
     sys.stdout.write('\r')
         # print('Epoch: {} \t Training Loss: {:.6f} \t Validation Loss {:.6f} \n \t ')
 
@@ -156,7 +175,7 @@ def train(model, loader, optimizer, scheduler, loss_fn, metric_fn, device):
 #     epoch_f1 = metrics_score[1]/len(loader)
     epoch_acc = metrics_score[1]/len(loader)
     
-    return epoch_loss, epoch_jaccard, epoch_acc
+    return epoch_loss, epoch_jaccard, epoch_acc, learning_rate
 
 def evaluate(model, loader, loss_fn, metric_fn, device):
     epoch_loss = 0.0
@@ -198,6 +217,8 @@ def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metri
     """ fiting model to dataloaders, saving best weights and showing results """
     losses, val_losses, accs, val_accs = [], [], [], []
     jaccards, val_jaccards = [], []
+    learning_rate =[]
+
     best_val_loss = float("inf")
     patience = 8 
 
@@ -205,9 +226,8 @@ def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metri
     for epoch in range (epochs):
         ts = time.time()
         
-        loss, jaccard, acc = train(model, train_dl, optimizer, scheduler, loss_fn, metric_fn, device)
+        loss, jaccard, acc, lr = train(model, train_dl, optimizer, scheduler, loss_fn, metric_fn, device)
         val_loss, val_jaccard, val_acc = evaluate(model, valid_dl, loss_fn, metric_fn, device)
-
         
         losses.append(loss)
         accs.append(acc)
@@ -216,10 +236,10 @@ def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metri
         val_losses.append(val_loss)
         val_accs.append(val_acc)
         val_jaccards.append(val_jaccard)
+
+        learning_rate.append(lr)
         
-        te = time.time()
-        
- 
+        te = time.time() 
 
         epoch_mins, epoch_secs = epoch_time(ts, te)
         
@@ -240,8 +260,8 @@ def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metri
             # print('count = ',count)
             if count >= patience:
                 print('Early stopping!')
-                return dict(loss = losses, val_loss = val_losses, acc = accs, val_acc = val_accs, jaccard = jaccards, val_jaccard = val_jaccards)
+                return dict(loss = losses, val_loss = val_losses, acc = accs, val_acc = val_accs, jaccard = jaccards, val_jaccard = val_jaccards, learning_rate = learning_rate)
 
 
 
-    return dict(loss = losses, val_loss = val_losses, acc = accs, val_acc = val_accs, jaccard = jaccards, val_jaccard = val_jaccards)
+    return dict(loss = losses, val_loss = val_losses, acc = accs, val_acc = val_accs, jaccard = jaccards, val_jaccard = val_jaccards, learning_rate = learning_rate)
