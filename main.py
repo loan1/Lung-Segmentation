@@ -219,9 +219,6 @@ def mainKFold():
         train_ids = get_item_to_idx(train_ids, img_mask_list)
         test_ids  = get_item_to_idx(test_ids, img_mask_list)
 
-        # print(len(train_ids))
-        # print (len(test_ids))
-
         train_subsampler = LungDataset(train_ids,opt.img_path, opt.mask_path,aug)  
         test_subsampler = LungDataset(test_ids,opt.img_path, opt.mask_path,transfm)
 
@@ -246,7 +243,7 @@ def mainKFold():
         # loss_fn = BCEWithLogitsLoss()
         loss_fn = ComboLoss()
         
-        res = fit(model, trainloader, testloader, optimizer, scheduler3, opt.num_epochs, loss_fn, calculate_metrics, opt.CHECKPOINT_PATH, device)
+        res = fit(model, trainloader, testloader, optimizer, scheduler3, opt.num_epochs, loss_fn, calculate_metrics, opt.CHECKPOINT_PATH, fold, device)
     
         # visualize loss, acc
         loss, val_loss = res['loss'], res['val_loss']
