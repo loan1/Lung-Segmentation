@@ -87,6 +87,7 @@ class ComboLoss(nn.Module): #Dice + BCE + focal
         Dice_BCE = BCE + dice_loss +focal_loss
 
         return Dice_BCE
+
 def calculate_metrics(y_pred, y_true):
     """ Ground truth """
     y_true = y_true.cpu().numpy()
@@ -213,7 +214,7 @@ def epoch_time(start_time, end_time):
     elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
     return elapsed_mins, elapsed_secs
 
-def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metric_fn, checkpoint_path, device):
+def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metric_fn, checkpoint_path, fold, device):
     """ fiting model to dataloaders, saving best weights and showing results """
     losses, val_losses, accs, val_accs = [], [], [], []
     jaccards, val_jaccards = [], []
@@ -221,7 +222,7 @@ def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metri
 
     best_val_loss = float("inf")
     patience = 8 
-
+    checkpoint_path = checkpoint_path.replace('.pt', str(fold) + '.pt')
     since = time.time()
     for epoch in range (epochs):
         ts = time.time()
