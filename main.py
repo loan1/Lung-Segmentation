@@ -2,7 +2,8 @@
 from script.utils import *
 from script.dataset import *
 from script.visualize import *
-from script.model import *
+from script.UNetResNet import *
+# from script.UNet_BN import *
 
 #importing the libraries
 import os
@@ -34,12 +35,12 @@ from torch.nn import BCEWithLogitsLoss
 
 def get_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--CHECKPOINT_PATH", default = './model/UNet.pt',type=str)
+    parser.add_argument("--CHECKPOINT_PATH", default = './model/Original/UNet.pt',type=str)
     parser.add_argument('--img_path', default='./dataset_lungseg/images/', type=str)
     parser.add_argument('--mask_path', default='./dataset_lungseg/masks/', type= str)
 
     parser.add_argument('--BATCH_SIZE', default=8, type=int)
-    parser.add_argument('--num_epochs', default= 15, type=int)
+    parser.add_argument('--num_epochs', default= 50, type=int)
     parser.add_argument('--lr', default=1e-3, type=float)
 
     opt = parser.parse_args()
@@ -61,7 +62,7 @@ def dataloader():
     # print(train_list)
 
     aug = A.Compose([
-        A.Resize(256, 256), 
+        A.Resize(572, 572), 
         A.HorizontalFlip(p=0.5),
         A.OneOf([
             A.RandomGamma(),
@@ -74,7 +75,7 @@ def dataloader():
     ])
 
     transfm = A.Compose([
-        A.Resize(256,256),
+        A.Resize(572,572),
         A.Normalize(mean = [0.5],  std = [0.5]),
         ToTensorV2()
     ])
@@ -105,7 +106,6 @@ def dataloader():
 def datasetKfold(kfold):
 
     mask_path = './dataset_lungseg/masks/'
-    img_path = './dataset_lungseg/images/'
     mask_list = os.listdir(mask_path)
     img_mask_list = [(mask_names.replace('_mask',''), mask_names) for mask_names in mask_list]
     
@@ -118,8 +118,7 @@ def get_item_to_idx(idx_list,image_list):
   return train_list
 
 def main():
-    opt = get_opt()
-    
+    opt = get_opt()    
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -133,37 +132,12 @@ def main():
     torch.cuda.empty_cache()
 
     # train and validation
-    res = fit(model, dataloader()['train'], dataloader()['val'], optimizer, scheduler, opt.num_epochs, loss_fn, calculate_metrics, opt.CHECKPOINT_PATH, device)
+    res = fit1(model, dataloader()['train'], dataloader()['val'], optimizer, scheduler, opt.num_epochs, loss_fn, calculate_metrics, opt.CHECKPOINT_PATH, device)
     
     # visualize loss, acc
     loss, val_loss = res['loss'], res['val_loss']
     acc, val_acc = res['acc'], res['val_acc']
     plot_acc_loss (loss, val_loss, acc, val_acc, './visualize/loss_acc')
-
-    # test
-    # with torch.no_grad():
-    #     for x, y in dataloader()['val']:
-    #         x = x.to(device)
-    #         y = y.to(device)
-
-    #         y_pred = model(x)
-    #         break
-
-    # pred = y_pred.cpu().numpy()
-    # ynum = y.cpu().numpy()
-
-    # pred = pred.reshape(len(pred), 224, 224)
-    # ynum = ynum.reshape(len(ynum), 224, 224)
-
-    # pred = pred > 0.5
-    # pred = np.array(pred, dtype=np.uint8)
-
-    # ynum = ynum > 0.5
-    # ynum = np.array(ynum, dtype=np.uint8)
-
-    # plt.imshow(pred[0], cmap='gray')
-    # plt.imshow(ynum[0], cmap='gray')
-    # plt.show()
 
 def mainKFold():
     opt = get_opt()
@@ -171,11 +145,11 @@ def mainKFold():
         A.Resize(256, 256), 
         A.HorizontalFlip(p=0.5),
         A.OneOf([
-            A.RandomGamma(),
-            A.ElasticTransform(alpha=120, sigma=120 * 0.05, alpha_affine=120 * 0.03),
-            A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.9),            
+            A.RandomGamma(), # lấy hằng số gamma áp dụng cho BrightnessContrast
+            A.ElasticTransform(alpha=120, sigma=120 * 0.05, alpha_affine=120 * 0.03), # phép biến đổi co giãn
+            A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.9), # thay đổi độ sáng, độ tương phản            
         ], p = 0.3),
-        A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),         
+        A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),   #      
         A.Normalize(mean = [0.5],  std = [0.5]),
         ToTensorV2()   
     ])
@@ -211,7 +185,7 @@ def mainKFold():
     #Start print
     print('=======================================')
 
-    for fold, (train_ids, test_ids) in enumerate(idx): #goi vay no sai
+    for fold, (train_ids, test_ids) in enumerate(idx): #
 
         #Print
         print(f'FOLD {fold}')
@@ -224,17 +198,30 @@ def mainKFold():
 
         trainloader = DataLoader(
             train_subsampler,
-            batch_size=8,
+            batch_size=4,
             shuffle=True
         )
 
         testloader = DataLoader(
             test_subsampler,
-            batch_size=8,
+            batch_size=4,
             shuffle=True
         )
 
         model = UNet_ResNet.to(device)
+        # model = PretrainedUNet(
+        #     in_channels=1,
+        #     out_channels=1, 
+        #     batch_norm=True, 
+        #     upscale_mode="bilinear"
+        # )
+
+        # model = UNet(in_channels=1, out_channels=1, batch_norm=True)         
+        # model = model.to(device)
+
+        # model = UNet(retain_dim=True, out_sz=(256,256)).to(device)
+        # model = build_unet().to(device)
+
         model.apply(reset_weights)
         optimizer = Adam(model.parameters(), opt.lr)
         # scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
@@ -277,6 +264,7 @@ def mainKFold():
   
 
 if __name__ == '__main__':
+    # main()
     mainKFold()
     # dataloader1()
     # image, mask = next(iter(dataloader()['train']))
