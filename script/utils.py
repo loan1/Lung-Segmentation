@@ -18,12 +18,12 @@ from sklearn.metrics import accuracy_score, jaccard_score, f1_score, recall_scor
 from operator import add
 import sys
 
-UNet_ResNet = smp.Unet(
-    encoder_name='resnet152',
-    encoder_weights='imagenet', # pre_training on ImageNet
-    in_channels=1, 
-    classes=1
-)
+# UNet_ResNet = smp.Unet(
+#     encoder_name='resnet152',
+#     encoder_weights='imagenet', # pre_training on ImageNet
+#     in_channels=1, 
+#     classes=1
+# )
 
 class DiceLoss(nn.Module):
     def __init__(self, weight=None, size_average=True):
@@ -55,6 +55,7 @@ class DiceBCELoss(nn.Module):
         #flatten label and prediction tensors
         inputs = inputs.view(-1)
         targets = targets.view(-1)
+        # print(inputs.shape)
 
         intersection = (inputs * targets).sum()
         dice_loss = 1 - (2.*intersection + smooth)/(inputs.sum() + targets.sum() + smooth)
@@ -77,12 +78,17 @@ class ComboLoss(nn.Module): #Dice + BCE + focal
         inputs = inputs.view(-1)
         targets = targets.view(-1)
 
+
         intersection = (inputs * targets).sum()
         dice_loss = 1 - (2.*intersection + smooth)/(inputs.sum() + targets.sum() + smooth)
         BCE = F.binary_cross_entropy(inputs, targets, reduction='mean')
         
         BCE_EXP = torch.exp(-BCE)
         focal_loss = alpha*(1-BCE_EXP)**gamma*BCE
+
+        # print(BCE)
+        # print(dice_loss)
+        # print(focal_loss)
 
         Dice_BCE = BCE + dice_loss +focal_loss
 
@@ -102,13 +108,13 @@ def calculate_metrics(y_pred, y_true):
     y_pred = y_pred.reshape(-1) # flatten
 
     jaccard = jaccard_score(y_true, y_pred)
-    # f1 = f1_score(y_true, y_pred)
-    # recall = recall_score(y_true, y_pred)
-    # precision = precision_score(y_true, y_pred)
+    f1 = f1_score(y_true, y_pred)
+    recall = recall_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred)
     acc = accuracy_score(y_true, y_pred)
 
-    # return [jaccard, f1, recall, precision, acc]
-    return [jaccard, acc]
+    return [jaccard, f1, recall, precision, acc]
+    # return [jaccard, acc]
 
 
 def save_checkpoint (state, filename):
@@ -139,16 +145,21 @@ def train(model, loader, optimizer, scheduler, loss_fn, metric_fn, device):
         x = x.to(device)
         # x = x.float().to(device)
         y = y.float().unsqueeze(1).to(device)
-
+        # print(y.shape)
+        # print(x.shape)
         # print('x',x)
         optimizer.zero_grad()
         y_pred = model(x) # gpu cuda
 
         # print('y_pred', y_pred)
         # print(y)
+        # print(y.shape)
         # y = torch.unsqueeze(y,1)
 
-        loss = loss_fn(y_pred, y) # comboloss BCE dice focal
+        # print(y_pred.shape)
+        # print(y.shape)
+
+        loss = loss_fn(y_pred, y) # comboloss: BCE dice focal
         loss.backward() # ???
         
         score = metric_fn(y_pred, y)
@@ -223,6 +234,59 @@ def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metri
     best_val_loss = float("inf")
     patience = 8 
     checkpoint_path = checkpoint_path.replace('.pt', str(fold) + '.pt')
+    since = time.time()
+    for epoch in range (epochs):
+        ts = time.time()
+        
+        loss, jaccard, acc, lr = train(model, train_dl, optimizer, scheduler, loss_fn, metric_fn, device)
+        val_loss, val_jaccard, val_acc = evaluate(model, valid_dl, loss_fn, metric_fn, device)
+        
+        losses.append(loss)
+        accs.append(acc)
+        jaccards.append(jaccard)
+        
+        val_losses.append(val_loss)
+        val_accs.append(val_acc)
+        val_jaccards.append(val_jaccard)
+
+        learning_rate.append(lr)
+        
+        te = time.time() 
+
+        epoch_mins, epoch_secs = epoch_time(ts, te)
+        
+        print ('Epoch [{}/{}], loss: {:.4f} - jaccard: {:.4f} - acc: {:.4f} - val_loss: {:.4f} - val_jaccard: {:.4f} - val_acc: {:.4f}'.format (epoch + 1, epochs, loss, jaccard, acc, val_loss, val_jaccard, val_acc))
+        print(f'Time: {epoch_mins}m {epoch_secs}s')
+    
+        period = time.time() - since
+        print('Training complete in {:.0f}m {:.0f}s'.format(period // 60, period % 60))
+        if val_loss < best_val_loss:
+            count = 0
+            data_str = f"===> Valid loss improved from {best_val_loss:2.4f} to {val_loss:2.4f}. Saving checkpoint: {checkpoint_path}"
+            print(data_str)
+            best_val_loss = val_loss
+            # save_checkpoint(model.state_dict(), checkpoint_path)
+            torch.save(model.state_dict(), checkpoint_path) #save checkpoint
+        else:
+            count += 1
+            # print('count = ',count)
+            if count >= patience:
+                print('Early stopping!')
+                return dict(loss = losses, val_loss = val_losses, acc = accs, val_acc = val_accs, jaccard = jaccards, val_jaccard = val_jaccards, learning_rate = learning_rate)
+
+
+
+    return dict(loss = losses, val_loss = val_losses, acc = accs, val_acc = val_accs, jaccard = jaccards, val_jaccard = val_jaccards, learning_rate = learning_rate)
+
+def fit1 (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metric_fn, checkpoint_path, device):
+    """ fiting model to dataloaders, saving best weights and showing results """
+    losses, val_losses, accs, val_accs = [], [], [], []
+    jaccards, val_jaccards = [], []
+    learning_rate =[]
+
+    best_val_loss = float("inf")
+    patience = 8 
+
     since = time.time()
     for epoch in range (epochs):
         ts = time.time()

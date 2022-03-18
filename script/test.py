@@ -1,5 +1,6 @@
-from utils import UNet_ResNet 
-from dataset import *
+from UNetResNet import *
+from dataset import LungDataset
+from utils import calculate_metrics
 from operator import add
 
 import albumentations as A
@@ -9,9 +10,7 @@ from torch.utils.data import DataLoader
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import accuracy_score, jaccard_score, f1_score, recall_score, precision_score
-# from sklearn.metrics import confusion_matrix, accuracy_score, classification_report, ConfusionMatrixDisplay
-from sklearn.model_selection import train_test_split
+
 
 def dataloader():
 
@@ -32,20 +31,12 @@ def dataloader():
         for i in range(len(img_mask_list)):
             f.write(str(img_mask_list[i])+ '\n') 
 
-    # with open('../dataset_lungseg/test/mask.txt','w') as f:
-    #     for i in range(len(mask_list)):
-    #         f.write(str(mask_list[i])+ '\n') 
-
     transfms = A.Compose([
-        A.Resize(224,224),
+        A.Resize(256,256),
         A.Normalize(mean = [0.5],  std = [0.5]),
         ToTensorV2()   
     ])
 
-    # mask_t = A.Compose([
-    #     A.Resize((224,224)),
-    #     A.ToTensor()
-    # ])
     test_set = LungDataset(img_mask_list, img_path, mask_path, transfms)
 
     loader ={
@@ -80,13 +71,13 @@ def test(dataloader, device, model, metric_fn):
             pred = y_pred.cpu().numpy() # mask output 
             ynum = y.cpu().numpy()  # mask label
 
-            pred = pred.reshape(len(pred), 224, 224) # 4, 224, 224
-            ynum = ynum.reshape(len(ynum), 224, 224)
+            pred = pred.reshape(len(pred), 256, 256) # 4, 224, 224
+            ynum = ynum.reshape(len(ynum), 256, 256)
 
-            pred = pred > 0.7
+            pred = pred > 0.3
             pred = np.array(pred, dtype=np.uint8)
 
-            ynum = ynum > 0.7
+            ynum = ynum > 0.3
             ynum = np.array(ynum, dtype=np.uint8)   
 
             y_true.append(ynum)    
@@ -94,7 +85,7 @@ def test(dataloader, device, model, metric_fn):
 
             x = x.cpu().numpy()
 
-            x = x.reshape(len(x), 224, 224)
+            x = x.reshape(len(x), 256, 256)
             x = x*0.5 + 0.5
             x = np.squeeze(x)
             x = np.clip(x, 0, 1)
@@ -112,91 +103,57 @@ def test(dataloader, device, model, metric_fn):
 
 #########################################################################################
 
+def predict(x, model, device): # dataset 14gb
+    model.eval()
+    with torch.no_grad():
+        x = x.to(device, dtype=torch.float32)
+        # y = y.to(device, dtype=torch.float32)
 
+        # output= model(x)
+        # _,pred = torch.max(output, 1)
 
-# def predict(x, model, device): # dataset 14gb
-#     model.eval()
-#     with torch.no_grad():
-#         x = x.to(device, dtype=torch.float32)
-#         # y = y.to(device, dtype=torch.float32)
+        y_pred = model(x)
+        pred = y_pred.cpu().numpy() # mask output 
+        # ynum = y.cpu().numpy()  # mask label
 
-#         # output= model(x)
-#         # _,pred = torch.max(output, 1)
+        pred = pred.reshape(len(pred), 256, 256)
+        # ynum = ynum.reshape(len(ynum), 224, 224)
 
-#         y_pred = model(x)
-#         pred = y_pred.cpu().numpy() # mask output 
-#         # ynum = y.cpu().numpy()  # mask label
+        pred = pred > 0.5
+        pred = np.array(pred, dtype=np.uint8)
+  
+        x = x.cpu().numpy()
+        # print('len x', len(x))
+        x = x.reshape(len(x), 256, 256)
+        # print(x.shape)
+        x = x*0.5 + 0.5
+        x = np.squeeze(x)
+        # # print(input)
+        x = np.clip(x, 0, 1)
 
-#         pred = pred.reshape(len(pred), 224, 224)
-#         # ynum = ynum.reshape(len(ynum), 224, 224)
-
-#         pred = pred > 0.5
-#         pred = np.array(pred, dtype=np.uint8)
-
-#         # ynum = ynum > 0.5
-#         # ynum = np.array(ynum, dtype=np.uint8)   
-#         x = x.cpu().numpy()
-#         # print('len x', len(x))
-#         x = x.reshape(len(x), 224, 224)
-#         # print(x.shape)
-#         x = x*0.5 + 0.5
-#         x = np.squeeze(x)
-#         # # print(input)
-#         x = np.clip(x, 0, 1)
-
-#     return x, pred
+    return x, pred
     
 
-# image, mask = next(iter(dataloader()['test']))
-# image1 = image[0][None,:,:,:]
-# print(image1.shape)
-
-# def visualize (y_true, y_pred, classes = 1):
-#     cnf_matrix = confusion_matrix(y_true, y_pred)
-#     fix, ax = plt.subplots(figsize = (10,10))
-#     disp = ConfusionMatrixDisplay(confusion_matrix = cnf_matrix, display_labels = classes)
-#     disp.plot(include_values = True, cmap = 'Blues', ax = ax, xticks_rotation = 'vertical')
-#     plt.savefig('../report/FTVGG19bn/MatrixFTVGG19bn1.png')
-
-def calculate_metrics(y_pred, y_true):
-    """ Ground truth """
-    y_true = y_true.cpu().numpy()
-    y_true = y_true > 0.5
-    y_true = y_true.astype(np.uint8)
-    y_true = y_true.reshape(-1)
-
-    """ Prediction """
-    y_pred = y_pred.cpu().detach().numpy()
-    y_pred = y_pred > 0.5 # True False False True 
-    y_pred = y_pred.astype(np.uint8) # 0 1 1 0
-    y_pred = y_pred.reshape(-1) # flatten
-
-    jaccard = jaccard_score(y_true, y_pred)
-    f1 = f1_score(y_true, y_pred)
-    recall = recall_score(y_true, y_pred)
-    precision = precision_score(y_true, y_pred)
-    acc = accuracy_score(y_true, y_pred)
-
-    return [jaccard, f1, recall, precision, acc]
-    # return [jaccard, acc]
-
-def main():
+def mainTest():
     jaccards, f1s, recalls, precisions, accs = [], [], [], [], []
-    y = []
-    cp_list = ['../model/UNet0.pt', '../model/UNet1.pt', '../model/UNet2.pt', '../model/UNet3.pt', '../model/UNet4.pt']
+    y_prect = []
+    cp_list = ['../model/UNetResNet34/UNet0.pt', '../model/UNetResNet34/UNet1.pt', '../model/UNetResNet34/UNet2.pt', '../model/UNetResNet34/UNet3.pt', '../model/UNetResNet34/UNet4.pt']
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    # model = UNet(in_channels=1, out_channels=1, batch_norm=True)        
+    # model = model.to(device)
+    
     model = UNet_ResNet.to(device)
 
     for fold in range(len(cp_list)):
         checkpoint = torch.load(cp_list[fold])
         model.load_state_dict(checkpoint)
-
-        
+         
 
         ############################################################################################
 
-        x, y_true, y_pred, jaccard, f1, recall, precision, acc = test(dataloader()['test'], device, model, calculate_metrics)
+
+        image, y_true, y_pred, jaccard, f1, recall, precision, acc = test(dataloader()['test'], device, model, calculate_metrics)
 
         jaccards.append(jaccard)
         f1s.append(f1)
@@ -205,18 +162,38 @@ def main():
         accs.append(acc)        
         
         print ('Fold: {} jaccard: {:.4f} - f1: {:.4f} - recall: {:.4f} - precision: {:.4f} - acc: {:.4f}'.format (fold, jaccard, f1, recall, precision, acc))    
-    # print(y)
-    # imshow(x, y_true, y, '../visualize/test.png')
-    # for idx in range(5):
-        y.append(y_pred)
-        # print(y_pred) # 
-    y_avg = np.mean(y, axis=0)
 
-    imshow(x, y_true, y, y_avg, '../visualize/test.png')
+        y_prect.append(y_pred)
+    
 
-    # print(y_avg[51][0].shape)
-    # plt.imshow(y_avg[51][0], cmap='gray')
-    # plt.show()
+    y_mean = np.mean(np.stack(y_prect, axis=0), axis=0)
+   
+    # print(y_mean.shape)
+    # print(y_mean[0].shape)
+
+    for idx in range(len(y_mean)):
+        y_mean[idx] = y_mean[idx] > 0.7
+        y_mean[idx] = y_mean[idx].astype(np.uint8)
+
+    imshow(image, y_true, y_prect, y_mean, '../visualize/testResNet34.png')
+    #####################################################
+
+    # print(y_avg[0].shape)
+    # print(y_avg)
+
+    # y_avg = y_avg > 0.5
+    # y_avg = np.array(y_avg, dtype=np.uint8)
+    # print(y_avg)
+
+    # for idx in range(len(y_avg)):
+    #     y_avg[idx] = (y_avg[idx] > 0.5) # True False False True 
+    #     y_avg[idx] = y_avg[idx].astype(np.uint8) # 0 1 1 0
+    
+    np.save('../visualize/ResNet34/images.npy',image)
+    np.save('../visualize/ResNet34/masks.npy',y_true)
+    np.save('../visualize/ResNet34/y_predict_5folds.npy',y_prect)
+    np.save('../visualize/ResNet34/y_predict_mean_5folds.npy',y_mean)
+
 
     
         ############################################################################################################
@@ -225,88 +202,139 @@ def main():
 def imshow(original,true,pred, mean, path):
 
     plt.figure (figsize = (15, 20))
+
     for idx in range(4):
 
         plt.subplot (4,8,idx*8 +1)
         plt.imshow(original[0][idx], cmap='gray')
-        plt.title('Original Image')
+        # plt.title('Original Image')
 
         plt.subplot (4,8,idx*8 +2)
         plt.imshow(true[0][idx], cmap='gray')
-        plt.title('True Mask')
+        # plt.title('True Mask')
 
         plt.subplot (4,8,idx*8 +3)
         plt.imshow(pred[0][0][idx], cmap='gray')
-        plt.title('Predict Mask')
+        # plt.title('Predict Mask')
 
         plt.subplot (4,8,idx*8 +4)
         plt.imshow(pred[1][0][idx], cmap='gray')
-        plt.title('Predict Mask')
+        # plt.title('Predict Mask')
 
         plt.subplot (4,8,idx*8 +5)
         plt.imshow(pred[2][0][idx], cmap='gray')
-        plt.title('Predict Mask')
+        # plt.title('Predict Mask')
 
         plt.subplot (4,8,idx*8 +6)
         plt.imshow(pred[3][0][idx], cmap='gray')
-        plt.title('Predict Mask')
+        # plt.title('Predict Mask')
 
 
         plt.subplot (4,8,idx*8 +7)
         plt.imshow(pred[4][0][idx], cmap='gray')
-        plt.title('Predict Mask')
+        # plt.title('Predict Mask')
 
         plt.subplot (4,8,idx*8 +8)
+        # print(mean.shape)
         plt.imshow(mean[0][idx], cmap='gray')
-        plt.title('Predict Mask')
-
+        # plt.title('Predict Mean')
+        
         plt.savefig(path)
+    # plt.title('Original ---- True ---- Predict ---- Predict ---- Predict ---- Predict ---- Predict ---- Mean')
     plt.show()
 
-# def main1():
-#     image_tfm = A.Compose([
-#         A.Resize((224, 224)),
-#         A.ToTensor(),
-#         A.Normalize(mean = [0.5],  std = [0.5]) 
-        
+def mainPredict():
+    cp_list = ['../model/original/UNet0.pt', '../model/original/UNet1.pt', '../model/original/UNet2.pt', '../model/original/UNet3.pt', '../model/original/UNet4.pt']
+    y = []
+    image_tfm = A.Compose([
+        A.Resize(256, 256),
+        A.Normalize(mean = [0.5],  std = [0.5]), 
+        ToTensorV2()
+    ])
 
-#     ])
-
-#     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-#     model = UNet_ResNet.to(device)
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    # model = UNet(in_channels=1, out_channels=1, batch_norm=True)        
+    # model = model.to(device)
+    model = UNet_ResNet.to(device)
     
-#     checkpoint = torch.load('../model/UNet.pt')
-#     model.load_state_dict(checkpoint)
+    for fold in range(len(cp_list)):
+        checkpoint = torch.load(cp_list[fold])
+        model.load_state_dict(checkpoint)
 
-#     img = Image.open('../dataset_lungseg/predict/1dad3414-88c9-4c56-af5d-3a1488af452c.png').convert('L')
-#     img = image_tfm(img) 
-#     img = img.unsqueeze(0)
-#     # print(img.shape)
+        img = Image.open('../dataset_lungseg/predict/1dad3414-88c9-4c56-af5d-3a1488af452c.png').convert('L')
+        img = np.array(img, dtype=np.float32)
+        img = image_tfm(image = img) 
+        img = img['image']
+        img = img.unsqueeze(0)
+        # print(img.shape)
 
-#     x, y_pred = predict(img, model, device)
+        x, y_pred = predict(img, model, device)
+        y.append(y_pred)
+    y_avg = np.mean(y, axis=0)
 
-#     image, mask = next(iter(dataloader()['test']))
+    # y_avg = y_avg.cpu().detach().numpy()
+    y_avg = y_avg > 0.7 # True False False True 
+    y_avg = y_avg.astype(np.uint8) # 0 1 1 0
+    # y_avg = y_avg.reshape(-1) # flatten
+    # print(y_avg.shape)
 
-#     # print(x.shape)
+    # for idx in range(4):
+    #     y_avg[idx] = (y_avg[idx] > 0.7) # True False False True 
+    #     y_avg[idx] = y_avg[idx].astype(np.uint8) # 0 1 1 0
 
-#     # print(y_pred[0][3].shape)
-#     plt.figure (figsize = (15, 20))
+    plt.figure (figsize = (15, 20))
 
-#     plt.subplot (1,2,1)
-#     plt.imshow(x, cmap='gray')
-#     plt.title('Original Image')
+    plt.subplot (1,7,1)
+    plt.imshow(x, cmap='gray')
+    plt.title('Original Image')
 
-#     plt.subplot (1,2,2)
-#     plt.imshow(y_pred[0], cmap='gray')
-#     plt.title('Predict Mask')
+    plt.subplot (1,7,2)
+    plt.imshow(y[0][0], cmap='gray')
+    plt.title('Predict Mask1')
 
-#     plt.show()
+    plt.subplot (1,7,3)
+    plt.imshow(y[1][0], cmap='gray')
+    plt.title('Predict Mask2')
 
-    # accuracy = accuracy_score(y_true, y_pred)
-    # print(accuracy)
+    plt.subplot (1,7,4)
+    plt.imshow(y[2][0], cmap='gray')
+    plt.title('Predict Mask3')
+
+
+    plt.subplot (1,7,5)
+    plt.imshow(y[3][0], cmap='gray')
+    plt.title('Predict Mask4')
+
+    plt.subplot (1,7,6)
+    plt.imshow(y[4][0], cmap='gray')
+    plt.title('Predict Mask5')
+
+    plt.subplot (1,7,7)
+    plt.imshow(y_avg[0], cmap='gray')
+    plt.title('Predict Mask')
+
+    plt.show()
+
+
 if __name__ == '__main__':
-    main()
-
+    mainTest()
+    # images_np = np.load('../visualize/images.npy', allow_pickle=True)
+    # masks_np = np.load('../visualize/masks.npy', allow_pickle=True)
+    # y_prect = np.load('../visualize/y_predict_5folds.npy', allow_pickle=True)
+    # y_arg = np.load('../visualize/y_predict_mean_5folds.npy', allow_pickle=True)
     
+    # y_mean = np.mean(np.stack(y_prect, axis=0), axis=0)
+   
+    # # print(y_mean.shape)
+    # # print(y_mean[0].shape)
+
+    # for idx in range(len(y_mean)):
+    #     y_mean[idx] = y_mean[idx] > 0.7
+    #     y_mean[idx] = y_mean[idx].astype(np.uint8)
+
+    # imshow(images_np, masks_np, y_prect, y_mean, '../visualize/test07.png')
 
 
+    # y_mean =
+    #     y_avg = y_avg > 0.7 # True False False True 
+    # y_avg = y_avg.astype(np.uint8) # 0 1 1 0
