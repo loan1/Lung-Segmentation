@@ -14,11 +14,9 @@ import cv2
 def Gauss_His(img):
     # print('type: ',type(img))
     img = cv2.GaussianBlur(img, (3,3), cv2.BORDER_DEFAULT)
-    # print('img shap: ', img_blur.shape)
-    # grayimg = cv2.cvtColor(img_blur, cv2.COLOR_BGR2GRAY)
-    # img_hist = cv2.equalizeHist(grayimg)
     # img = cv2.equalizeHist(img)
-
+    # clahe = cv2.createCLAHE(clipLimit = 2.0, tileGridSize=(3,3))
+    # img = clahe.apply(img)
     return img
 
 class LungDataset(Dataset):
@@ -41,6 +39,7 @@ class LungDataset(Dataset):
         masks = np.array(masks, dtype=np.float32) # 
         masks[masks == 255] = 1 # nếu giá trị pixcel == 255 thì đưa về 1
         
+        images =  Gauss_His(images) 
         if self.transform != None:
             aug = self.transform(image = images, mask = masks)
             images = aug['image']
@@ -61,11 +60,13 @@ class DatasetPredict(Dataset):
 
     def __getitem__(self,index): # 'Generates one sample of data'      
 
-        images_names = os.listdir(self.img_folder)
+        images_list = os.listdir(self.img_folder)
+        images_name = images_list[index]
+        # print(images_name)
         # images = Image.open(self.img_folder +  images_names[index]).convert('L')# grey # kiểu PIL images
-        images = cv2.imread(self.img_folder +  images_names[index], 0) # #############
-
-        # images = np.array(images, dtype=np.float32) # đổi qua numpy array kiểu float 32
+        images = cv2.imread(self.img_folder +  images_name, 0) # #############
+        # print(images.shape)
+        images = np.array(images, dtype=np.float32) # đổi qua numpy array kiểu float 32
         # print('image shape: ', images.shape)
         images =  Gauss_His(images)    
         # print('img shape 2: ', images.shape)
@@ -74,6 +75,6 @@ class DatasetPredict(Dataset):
             images = aug['image']
 
         # print('images: ', images.shape) # torch.Size([1, 256, 256])
-        return images # chua 1 anh
+        return images, images_name # chua 1 anh + tên
 
         

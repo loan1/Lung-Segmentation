@@ -29,7 +29,7 @@ import argparse
 
 def get_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--CHECKPOINT_PATH", default = '../model/UNetResNet18/UNet.pt',type=str)
+    parser.add_argument("--CHECKPOINT_PATH", default = '../model/UNetResNet18Gauss/UNet.pt',type=str)
     parser.add_argument('--img_path', default='../dataset_lungseg/images/', type=str)
     parser.add_argument('--mask_path', default='../dataset_lungseg/masks/', type= str)
 
