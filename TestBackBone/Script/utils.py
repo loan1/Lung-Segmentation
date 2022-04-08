@@ -18,6 +18,53 @@ from sklearn.metrics import accuracy_score, jaccard_score, f1_score, recall_scor
 from operator import add
 import sys
 
+# UNet_ResNet = smp.Unet(
+#     encoder_name='resnet152',
+#     encoder_weights='imagenet', # pre_training on ImageNet
+#     in_channels=1, 
+#     classes=1
+# )
+
+class DiceLoss(nn.Module):
+    def __init__(self, weight=None, size_average=True):
+        super(DiceLoss, self).__init__()
+
+    def forward(self, inputs, targets, smooth=1):
+
+        #comment out if your model contains a sigmoid or equivalent activation layer
+        inputs = torch.sigmoid(inputs)
+
+        #flatten label and prediction tensors
+        inputs = inputs.view(-1)
+        targets = targets.view(-1)
+
+        intersection = (inputs * targets).sum()
+        dice = (2.*intersection + smooth)/(inputs.sum() + targets.sum() + smooth)
+
+        return 1 - dice
+
+class DiceBCELoss(nn.Module):
+    def __init__(self, weight=None, size_average=True):
+        super(DiceBCELoss, self).__init__()
+
+    def forward(self, inputs, targets, smooth=1):
+
+        #comment out if your model contains a sigmoid or equivalent activation layer
+        inputs = torch.sigmoid(inputs)
+
+        #flatten label and prediction tensors
+        inputs = inputs.view(-1)
+        targets = targets.view(-1)
+        # print(inputs.shape)
+
+        intersection = (inputs * targets).sum()
+        dice_loss = 1 - (2.*intersection + smooth)/(inputs.sum() + targets.sum() + smooth)
+        BCE = F.binary_cross_entropy(inputs, targets, reduction='mean')
+        Dice_BCE = BCE + dice_loss
+
+        return Dice_BCE
+
+
 class ComboLoss(nn.Module): #Dice + BCE + focal
     def __init__(self, weight=None, size_average=True):
         super(ComboLoss, self).__init__()
@@ -38,6 +85,10 @@ class ComboLoss(nn.Module): #Dice + BCE + focal
         
         BCE_EXP = torch.exp(-BCE)
         focal_loss = alpha*(1-BCE_EXP)**gamma*BCE
+
+        # print(BCE)
+        # print(dice_loss)
+        # print(focal_loss)
 
         Dice_BCE = BCE + dice_loss +focal_loss
 
@@ -62,8 +113,15 @@ def calculate_metrics(y_pred, y_true):
     precision = precision_score(y_true, y_pred)
     acc = accuracy_score(y_true, y_pred)
 
-    # return [jaccard, f1, recall, precision, acc]
-    return [jaccard, acc, f1, recall, precision]
+    return [jaccard, f1, recall, precision, acc]
+    # return [jaccard, acc]
+
+
+def save_checkpoint (state, filename):
+    """ saving model's weights """
+    print ('=> saving checkpoint')
+    torch.save (state, filename)
+
 
 
 def reset_weights(m):
@@ -85,10 +143,21 @@ def train(model, loader, optimizer, scheduler, loss_fn, metric_fn, device):
 
     for i, (x, y) in enumerate (loader):
         x = x.to(device)
+        # x = x.float().to(device)
         y = y.float().unsqueeze(1).to(device)
-
+        # print(y.shape)
+        # print(x.shape)
+        # print('x',x)
         optimizer.zero_grad()
         y_pred = model(x) # gpu cuda
+
+        # print('y_pred', y_pred)
+        # print(y)
+        # print(y.shape)
+        # y = torch.unsqueeze(y,1)
+
+        # print(y_pred.shape)
+        # print(y.shape)
 
         loss = loss_fn(y_pred, y) # comboloss: BCE dice focal
         loss.backward() # ???
@@ -97,7 +166,8 @@ def train(model, loader, optimizer, scheduler, loss_fn, metric_fn, device):
         metrics_score = list(map(add, metrics_score, score))
         
         optimizer.step()
-        learning_rate = optimizer.param_groups[0]['lr']     
+        learning_rate = optimizer.param_groups[0]['lr']
+        
 
         epoch_loss += loss.item()
         
@@ -109,16 +179,15 @@ def train(model, loader, optimizer, scheduler, loss_fn, metric_fn, device):
 
 
     sys.stdout.write('\r')
+        # print('Epoch: {} \t Training Loss: {:.6f} \t Validation Loss {:.6f} \n \t ')
 
     epoch_loss = epoch_loss/len(loader)
     
     epoch_jaccard = metrics_score[0]/len(loader)
+#     epoch_f1 = metrics_score[1]/len(loader)
     epoch_acc = metrics_score[1]/len(loader)
-    # epoch_f1 = metrics_score[2] / len(loader)
-    # epoch_recal = metrics_score[3] / len(loader)
-    # epoch_precision = metrics_score[4] / len(loader)
     
-    return epoch_loss, epoch_jaccard, epoch_acc, learning_rate  
+    return epoch_loss, epoch_jaccard, epoch_acc, learning_rate
 
 def evaluate(model, loader, loss_fn, metric_fn, device):
     epoch_loss = 0.0
@@ -147,11 +216,8 @@ def evaluate(model, loader, loss_fn, metric_fn, device):
         epoch_jaccard = metrics_score[0] / len(loader)
 #         epoch_f1 = metrics_score[1] / len(loader)
         epoch_acc = metrics_score[1] / len(loader)
-        epoch_f1 = metrics_score[2] / len(loader)
-        epoch_recal = metrics_score[3] / len(loader)
-        epoch_precision = metrics_score[4] / len(loader)
     
-    return epoch_loss, epoch_jaccard, epoch_acc, epoch_f1, epoch_recal, epoch_precision    
+    return epoch_loss, epoch_jaccard, epoch_acc    
 
 def epoch_time(start_time, end_time):
     elapsed_time = end_time - start_time
@@ -162,7 +228,7 @@ def epoch_time(start_time, end_time):
 def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metric_fn, checkpoint_path, fold, device):
     """ fiting model to dataloaders, saving best weights and showing results """
     losses, val_losses, accs, val_accs = [], [], [], []
-    jaccards, val_jaccards, f1s, recalls, precisions = [], [], [], [], []
+    jaccards, val_jaccards = [], []
     learning_rate =[]
 
     best_val_loss = float("inf")
@@ -173,7 +239,7 @@ def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metri
         ts = time.time()
         
         loss, jaccard, acc, lr = train(model, train_dl, optimizer, scheduler, loss_fn, metric_fn, device)
-        val_loss, val_jaccard, val_acc, f1, recall, precision = evaluate(model, valid_dl, loss_fn, metric_fn, device)
+        val_loss, val_jaccard, val_acc = evaluate(model, valid_dl, loss_fn, metric_fn, device)
         
         losses.append(loss)
         accs.append(acc)
@@ -183,9 +249,58 @@ def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metri
         val_accs.append(val_acc)
         val_jaccards.append(val_jaccard)
 
-        f1s.append(f1)
-        recalls.append(recall)
-        precisions.append(precision)
+        learning_rate.append(lr)
+        
+        te = time.time() 
+
+        epoch_mins, epoch_secs = epoch_time(ts, te)
+        
+        print ('Epoch [{}/{}], loss: {:.4f} - jaccard: {:.4f} - acc: {:.4f} - val_loss: {:.4f} - val_jaccard: {:.4f} - val_acc: {:.4f}'.format (epoch + 1, epochs, loss, jaccard, acc, val_loss, val_jaccard, val_acc))
+        print(f'Time: {epoch_mins}m {epoch_secs}s')
+    
+        period = time.time() - since
+        print('Training complete in {:.0f}m {:.0f}s'.format(period // 60, period % 60))
+        if val_loss < best_val_loss:
+            count = 0
+            data_str = f"===> Valid loss improved from {best_val_loss:2.4f} to {val_loss:2.4f}. Saving checkpoint: {checkpoint_path}"
+            print(data_str)
+            best_val_loss = val_loss
+            # save_checkpoint(model.state_dict(), checkpoint_path)
+            torch.save(model.state_dict(), checkpoint_path) #save checkpoint
+        else:
+            count += 1
+            # print('count = ',count)
+            if count >= patience:
+                print('Early stopping!')
+                return dict(loss = losses, val_loss = val_losses, acc = accs, val_acc = val_accs, jaccard = jaccards, val_jaccard = val_jaccards, learning_rate = learning_rate)
+
+
+
+    return dict(loss = losses, val_loss = val_losses, acc = accs, val_acc = val_accs, jaccard = jaccards, val_jaccard = val_jaccards, learning_rate = learning_rate)
+
+def fit1 (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metric_fn, checkpoint_path, device):
+    """ fiting model to dataloaders, saving best weights and showing results """
+    losses, val_losses, accs, val_accs = [], [], [], []
+    jaccards, val_jaccards = [], []
+    learning_rate =[]
+
+    best_val_loss = float("inf")
+    patience = 8 
+
+    since = time.time()
+    for epoch in range (epochs):
+        ts = time.time()
+        
+        loss, jaccard, acc, lr = train(model, train_dl, optimizer, scheduler, loss_fn, metric_fn, device)
+        val_loss, val_jaccard, val_acc = evaluate(model, valid_dl, loss_fn, metric_fn, device)
+        
+        losses.append(loss)
+        accs.append(acc)
+        jaccards.append(jaccard)
+        
+        val_losses.append(val_loss)
+        val_accs.append(val_acc)
+        val_jaccards.append(val_jaccard)
 
         learning_rate.append(lr)
         
@@ -193,9 +308,7 @@ def fit (model, train_dl, valid_dl, optimizer, scheduler, epochs, loss_fn, metri
 
         epoch_mins, epoch_secs = epoch_time(ts, te)
         
-        # print ('Epoch [{}/{}], loss: {:.4f} - jaccard: {:.4f} - acc: {:.4f}  - val_loss: {:.4f} - val_jaccard: {:.4f} - val_acc: {:.4f}'.format (epoch + 1, epochs, loss, jaccard, acc, val_loss, val_jaccard, val_acc))
-        print ('Epoch [{}/{}], loss: {:.4f} - jaccard: {:.4f} - acc: {:.4f} '.format (epoch + 1, epochs, loss, jaccard, acc))
-        print ('val_loss: {:.4f} - val_jaccard: {:.4f} - val_acc: {:.4f} - val_f1: {:.4f} - val_recall: {:.4f} - val_precision: {:.4f}'.format (val_loss, val_jaccard, val_acc, f1, recall, precision))
+        print ('Epoch [{}/{}], loss: {:.4f} - jaccard: {:.4f} - acc: {:.4f} - val_loss: {:.4f} - val_jaccard: {:.4f} - val_acc: {:.4f}'.format (epoch + 1, epochs, loss, jaccard, acc, val_loss, val_jaccard, val_acc))
         print(f'Time: {epoch_mins}m {epoch_secs}s')
     
         period = time.time() - since
