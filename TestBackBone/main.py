@@ -2,17 +2,19 @@
 from Script.utils import *
 from Script.dataset import *
 from Script.visualize import *
-from Script.models import *
-# from script.UNet_BN import *
+# from Script.models import *
+# from Script.UNet_BN import*
+# from Script.UNet_original import *
+from Script.UNet import *
 
 #importing the libraries
 import os
-import numpy as np
+
 # import torchvision.transforms as transforms
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 #for reading and displaying images
-import matplotlib.pyplot as plt
+
 
 #Pytorch libraries and modules
 import torch
@@ -29,7 +31,7 @@ import argparse
 
 def get_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--CHECKPOINT_PATH", default = '../model/UNetResNet18Gauss/UNet.pt',type=str)
+    parser.add_argument("--CHECKPOINT_PATH", default = '../model/UNet/UNet.pt',type=str)
     parser.add_argument('--img_path', default='../dataset_lungseg/images/', type=str)
     parser.add_argument('--mask_path', default='../dataset_lungseg/masks/', type= str)
 
@@ -39,7 +41,6 @@ def get_opt():
 
     opt = parser.parse_args()
     return opt
-
 
 def datasetKfold(kfold):
 
@@ -56,15 +57,16 @@ def get_item_to_idx(idx_list,image_list):
 
 def mainKFold():
     opt = get_opt()
+
     aug = A.Compose([
         A.Resize(256, 256), 
         A.HorizontalFlip(p=0.5),
         A.OneOf([
-            A.RandomGamma(), # lấy hằng số gamma áp dụng cho BrightnessContrast
-            A.ElasticTransform(alpha=120, sigma=120 * 0.05, alpha_affine=120 * 0.03), # phép biến đổi co giãn
-            A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.9), # thay đổi độ sáng, độ tương phản            
+            A.RandomGamma(),# lấy hằng số gamma áp dụng cho BrightnessContrast
+            A.ElasticTransform(alpha=120, sigma=120 * 0.05, alpha_affine=120 * 0.03),  # phép biến đổi co giãn
+            A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.9),    # thay đổi độ sáng, độ tương phản        
         ], p = 0.3),
-        A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),   #      
+        A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),     
         A.Normalize(mean = [0.5],  std = [0.5]),
         ToTensorV2()   
     ])
@@ -113,17 +115,21 @@ def mainKFold():
 
         trainloader = DataLoader(
             train_subsampler,
-            batch_size=4,
+            batch_size=8,
             shuffle=True
         )
 
         testloader = DataLoader(
             test_subsampler,
-            batch_size=4,
+            batch_size=8,
             shuffle=True
         )
 
-        model = UNet_ResNet18.to(device)
+        # model = UNet_ResNet152.to(device)
+        # model = UNet_DenseNet121.to(device)
+        # model = UNet_original.to(device)
+        # model = UNet_original123(in_channels=1, out_channels=1).to(device)
+        model = UNet(n_class=5).to(device)
 
 
         model.apply(reset_weights)
@@ -149,7 +155,7 @@ def mainKFold():
         results[fold] = 100* Accuracy/len(val_acc)
 
       # Print fold results
-    print(f'K-FOLD CROSS VALIDATION RESULTS FOR {k_folds} FOLDS')
+    print(f'K-FOLD CROSS VALIDATION RESULTS FOR {k_folds} FOLDS MODEL UNetOriginal')
     print('--------------------------------')
     sum = 0.0
     for key, value in results.items():
@@ -159,9 +165,9 @@ def mainKFold():
 
 
 ##################################################################################
-    plot_acc_loss (loss, val_loss, acc, val_acc, '../visualize/loss_acc.png')
+    plot_acc_loss (loss, val_loss, acc, val_acc, '../visualize/loss_accUNet.png')
 
-    plot_LR(res['learning_rate'], '../visualize/LR.png')
+    plot_LR(res['learning_rate'], '../visualize/UNet.png')
 
     print(res['learning_rate'])
   

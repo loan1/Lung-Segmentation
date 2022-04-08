@@ -13,7 +13,7 @@ import cv2
 
 def Gauss_His(img):
     # print('type: ',type(img))
-    img = cv2.GaussianBlur(img, (3,3), cv2.BORDER_DEFAULT)
+    img = cv2.GaussianBlur(img, (3,3), cv2.BORDER_DEFAULT) #giảm nhiễu
     # img = cv2.equalizeHist(img)
     # clahe = cv2.createCLAHE(clipLimit = 2.0, tileGridSize=(3,3))
     # img = clahe.apply(img)
