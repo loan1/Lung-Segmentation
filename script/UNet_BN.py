@@ -141,5 +141,6 @@ class PretrainedUNet(torch.nn.Module):
         return out
 
 model = UNet(in_channels=1, out_channels=1, batch_norm=True)
+
 model = model.cuda()
 summary(model, (1,256,256))
