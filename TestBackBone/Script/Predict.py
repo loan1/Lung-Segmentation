@@ -1,13 +1,13 @@
-from models import *
-from dataset import DatasetPredict
-from PIL import Image
+# link dataset
+# https://www.kaggle.com/andyczhao/covidx-cxr2/code
+from Script.dataset_custom import DatasetPredict
+
 import cv2
 from skimage import morphology
 from tqdm import tqdm
 
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
-import os
 from torch.utils.data import DataLoader
 
 import torch
@@ -82,12 +82,13 @@ def predict(dataloader, model, device): # dataset 14gb
 
     return image, y_predict
 
-def mainPredict():
-    cp_list = ['../../model/UNetResNet18Gauss/UNet0.pt', '../../model/UNetResNet18Gauss/UNet1.pt', '../../model/UNetResNet18Gauss/UNet2.pt', '../../model/UNetResNet18Gauss/UNet3.pt', '../../model/UNetResNet18Gauss/UNet4.pt']
-    
+def mainPredict(model):
+    # cp_list = ['../../model/UNetResNet18Gauss/UNet0.pt', '../../model/UNetResNet18Gauss/UNet1.pt', '../../model/UNetResNet18Gauss/UNet2.pt', '../../model/UNetResNet18Gauss/UNet3.pt', '../../model/UNetResNet18Gauss/UNet4.pt']
+    cp_list = ['../../model/VGG11_bn/UNet0.pt', '../../model/VGG11_bn/UNet1.pt', '../../model/VGG11_bn/UNet2.pt', '../../model/VGG11_bn/UNet3.pt', '../../model/VGG11_bn/UNet4.pt']
     y = []
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    modelUNet = UNet_ResNet18.to(device)
+    # modelUNet = UNet_ResNet18.to(device)
+    modelUNet = model.to(device)
     
     for fold in tqdm(range(len(cp_list))):
         checkpoint = torch.load(cp_list[fold])
@@ -99,7 +100,7 @@ def mainPredict():
         # img = img['image']
         # img = img.unsqueeze(0)
 
-        x, y_pred = predict(dataloaderPre()['Negative'], modelUNet, device)
+        x, y_pred = predict(dataloaderPre()['Positive'], modelUNet, device)
         
         # print('x: ', x.shape)
         # print('y_pred: ', y_pred.shape)
@@ -118,9 +119,13 @@ def mainPredict():
 
     # imshowPre(x, y, y_mean, '../../visualize/InferPositive/InferResNet18GaussPreFULL/InferResNet18.png')
 
-    np.save('../../visualize/InferResNet18GaussPre_NegFULL/images.npy',x)
-    np.save('../../visualize/InferResNet18GaussPre_NegFULL/y_predict_5folds.npy',y)
-    np.save('../../visualize/InferResNet18GaussPre_NegFULL/y_predict_mean_5folds.npy',y_mean)
+    # np.save('../../visualize/InferResNet18GaussPre_NegFULL/images.npy',x)
+    # np.save('../../visualize/InferResNet18GaussPre_NegFULL/y_predict_5folds.npy',y)
+    # np.save('../../visualize/InferResNet18GaussPre_NegFULL/y_predict_mean_5folds.npy',y_mean)
+    
+    np.save('../../visualize/InferVGG11_bn_PosFULL/images.npy',x)
+    np.save('../../visualize/InferVGG11_bn_PosFULL/y_predict_5folds.npy',y)
+    np.save('../../visualize/InferVGG11_bn_PosFULL/y_predict_mean_5folds.npy',y_mean)
 
     # plt.show()
 def postprocess(img):
@@ -199,17 +204,19 @@ if __name__ == '__main__':
     
     # ######################################################################################
 
-    images_np = np.load('../../visualize/InferResNet18GaussPre_NegFULL/images.npy', allow_pickle=True)
-    y = np.load('../../visualize/InferResNet18GaussPre_NegFULL/y_predict_5folds.npy', allow_pickle=True)
-    y_mean = np.load('../../visualize/InferResNet18GaussPre_NegFULL/y_predict_mean_5folds.npy', allow_pickle=True)
+    images_np = np.load('../../visualize/InferVGG11_bn_PosFULL/images.npy', allow_pickle=True)
+    y = np.load('../../visualize/InferVGG11_bn_PosFULL/y_predict_5folds.npy', allow_pickle=True)
+    y_mean = np.load('../../visualize/InferVGG11_bn_PosFULL/y_predict_mean_5folds.npy', allow_pickle=True)
 
-    list_name = np.loadtxt('../../dataset_lungseg/predict/filenameNeg.txt', dtype = list)
-    for i in tqdm(range(len(dataloaderPre()['Negative']))):   # 
+    list_name = np.loadtxt('../../dataset_lungseg/predict/filenamePos.txt', dtype = list)
+
+    for i in tqdm(range(len(dataloaderPre()['Positive']))):   # 
         for idx in range(4):
 
-            ret = postprocess(y_mean[i][idx])
+            ret = postprocess(y_mean[i][idx])           
+            plt.imsave('../../dataset_lungseg/predict/PosMaskVGG11/' + list_name[i*4+idx], ret)
 
-            plt.imsave('../../dataset_lungseg/predict/NegMask/' + list_name[i*4+idx], ret)
+    # imshow(images_np, y, y_mean, ret'../../visualizeTestResNet18/testResNet1803.png')
 
     plt.close('all')
 

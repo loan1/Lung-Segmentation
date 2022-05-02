@@ -1,4 +1,3 @@
-from .dataset import *
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -50,5 +49,49 @@ def plot_LR(LR, path):
     plt.legend ()
     plt.savefig(path)
     plt.show()
+##################################################################################################
+def Testimshow(original,true,pred, mean, path):
 
-    
+    for i in range(51):
+
+        plt.figure (figsize = (15, 20))
+
+        for idx in range(4):
+
+            plt.subplot (4,8,idx*8 +1)
+            plt.imshow(original[i][idx], cmap='gray')
+            # plt.title('Original Image')
+
+            plt.subplot (4,8,idx*8 +2)
+            plt.imshow(true[i][idx], cmap='gray')
+            # plt.title('True Mask')
+
+            plt.subplot (4,8,idx*8 +3)
+            plt.imshow(pred[0][i][idx], cmap='gray')
+            # plt.title('Predict Mask')
+
+            plt.subplot (4,8,idx*8 +4)
+            plt.imshow(pred[1][i][idx], cmap='gray')
+            # plt.title('Predict Mask')
+
+            plt.subplot (4,8,idx*8 +5)
+            plt.imshow(pred[2][i][idx], cmap='gray')
+            # plt.title('Predict Mask')
+
+            plt.subplot (4,8,idx*8 +6)
+            plt.imshow(pred[3][i][idx], cmap='gray')
+            # plt.title('Predict Mask')
+
+
+            plt.subplot (4,8,idx*8 +7)
+            plt.imshow(pred[4][i][idx], cmap='gray')
+            # plt.title('Predict Mask')
+
+            plt.subplot (4,8,idx*8 +8)
+            # print(mean.shape)
+            plt.imshow(mean[i][idx], cmap='gray')
+            # plt.title('Predict Mean')
+            
+        plt.savefig(path.replace('.png', '_' +str(i) + '.png'))
+        # plt.title('Original ---- True ---- Predict ---- Predict ---- Predict ---- Predict ---- Predict ---- Mean')
+        # plt.show()    
